@@ -1,41 +1,96 @@
-import { Router } from 'express';
-import Food from '../models/Food.js';
-import Request from '../models/Request.js';
-import { asyncHandler } from '../utils/errors.js';
-import { requireAuth } from '../middleware/auth.js';
-const r = Router();
+import { Router } from 'express'
+import Request from '../models/request.model.js'
+import Food from '../models/food.model.js'
+import { auth } from '../middleware/auth.js'
 
-r.post('/', requireAuth, asyncHandler(async (req, res) => {
-  const { foodId, location, reason, contactNo } = req.body;
-  const food = await Food.findById(foodId);
-  if (!food) return res.status(404).json({ message: 'Food not found' });
-  const request = await Request.create({
-    foodId, location, reason, contactNo,
-    requester: { name: req.user.name || req.user.email, email: req.user.email, photoURL: req.user.picture, uid: req.user.uid },
-    status: 'pending'
-  });
-  res.status(201).json(request);
-}));
+const router = Router()
 
-r.get('/food/:id', requireAuth, asyncHandler(async (req, res) => {
-  const food = await Food.findById(req.params.id);
-  if (!food) return res.status(404).json({ message: 'Food not found' });
-  if (food.donor.email !== req.user.email) return res.status(403).json({ message: 'Forbidden' });
-  const requests = await Request.find({ foodId: food._id }).sort({ createdAt: -1 });
-  res.json(requests);
-}));
+router.post('/', auth, async (req, res, next) => {
+  try {
+    const { foodId, note } = req.body
+    const user = req.user
 
-r.patch('/:id', requireAuth, asyncHandler(async (req, res) => {
-  const request = await Request.findById(req.params.id);
-  if (!request) return res.status(404).json({ message: 'Not found' });
-  const food = await Food.findById(request.foodId);
-  if (!food) return res.status(404).json({ message: 'Food not found' });
-  if (food.donor.email !== req.user.email) return res.status(403).json({ message: 'Forbidden' });
-  const { status } = req.body; // accepted | rejected
-  if (!['accepted','rejected'].includes(status)) return res.status(400).json({ message: 'Invalid status' });
-  request.status = status; await request.save();
-  if (status === 'accepted') { food.status = 'Donated'; await food.save(); }
-  res.json(request);
-}));
+    if (!foodId) {
+      return res.status(400).json({ message: 'foodId is required' })
+    }
 
-export default r;
+    const food = await Food.findById(foodId)
+    if (!food) {
+      return res.status(404).json({ message: 'Food not found' })
+    }
+
+    if (food.donorEmail === user.email) {
+      return res.status(400).json({ message: 'Cannot request own food' })
+    }
+
+    const existing = await Request.findOne({
+      food: foodId,
+      requesterEmail: user.email
+    })
+
+    if (existing) {
+      return res.status(400).json({ message: 'Already requested this food' })
+    }
+
+    const request = await Request.create({
+      food: foodId,
+      donorEmail: food.donorEmail,
+      requesterEmail: user.email,
+      requesterName: user.name || user.email,
+      note: note || ''
+    })
+
+    res.status(201).json(request)
+  } catch (err) {
+    next(err)
+  }
+})
+
+router.get('/my', auth, async (req, res, next) => {
+  try {
+    const email = req.user.email
+    const requests = await Request.find({ requesterEmail: email }).populate('food')
+    res.json(requests)
+  } catch (err) {
+    next(err)
+  }
+})
+
+router.get('/donor', auth, async (req, res, next) => {
+  try {
+    const email = req.user.email
+    const requests = await Request.find({ donorEmail: email }).populate('food')
+    res.json(requests)
+  } catch (err) {
+    next(err)
+  }
+})
+
+router.patch('/:id/status', auth, async (req, res, next) => {
+  try {
+    const { status } = req.body
+    const email = req.user.email
+
+    if (!['Pending', 'Approved', 'Rejected'].includes(status)) {
+      return res.status(400).json({ message: 'Invalid status' })
+    }
+
+    const request = await Request.findById(req.params.id).populate('food')
+    if (!request) {
+      return res.status(404).json({ message: 'Request not found' })
+    }
+
+    if (request.donorEmail !== email) {
+      return res.status(403).json({ message: 'Not allowed' })
+    }
+
+    request.status = status
+    await request.save()
+
+    res.json(request)
+  } catch (err) {
+    next(err)
+  }
+})
+
+export default router
