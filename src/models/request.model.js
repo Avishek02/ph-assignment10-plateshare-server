@@ -19,14 +19,26 @@ const requestSchema = new Schema(
       type: String,
       required: true
     },
-    status: {
-      type: String,
-      enum: ['Pending', 'Approved', 'Rejected'],
-      default: 'Pending'
-    },
-    note: {
+    requesterPhoto: {
       type: String,
       default: ''
+    },
+    location: {
+      type: String,
+      required: true
+    },
+    reason: {
+      type: String,
+      required: true
+    },
+    contactNo: {
+      type: String,
+      required: true
+    },
+    status: {
+      type: String,
+      enum: ['Pending', 'Accepted', 'Rejected'],
+      default: 'Pending'
     }
   },
   { timestamps: true }
