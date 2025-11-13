@@ -1,12 +1,15 @@
 import { Router } from 'express'
 import Request from '../models/request.model.js'
-import Food from '../models/food.model.js'
-import { auth } from '../middleware/auth.js'
+import Food from '../models/Food.js'
+import { requireAuth } from '../middleware/auth.js'
+import { asyncHandler } from '../utils/errors.js'
 
-const router = Router()
+const r = Router()
 
-router.post('/', auth, async (req, res, next) => {
-  try {
+r.post(
+  '/',
+  requireAuth,
+  asyncHandler(async (req, res) => {
     const { foodId, location, reason, contactNo } = req.body
     const user = req.user
 
@@ -19,7 +22,7 @@ router.post('/', auth, async (req, res, next) => {
       return res.status(404).json({ message: 'Food not found' })
     }
 
-    if (food.donorEmail === user.email) {
+    if (food.donor.email === user.email) {
       return res.status(400).json({ message: 'Cannot request own food' })
     }
 
@@ -34,43 +37,43 @@ router.post('/', auth, async (req, res, next) => {
 
     const request = await Request.create({
       food: foodId,
-      donorEmail: food.donorEmail,
+      donorEmail: food.donor.email,
       requesterEmail: user.email,
       requesterName: user.name || user.email,
-      requesterPhoto: user.photoURL || user.picture || '',
+      requesterPhoto: user.picture || '',
       location,
       reason,
       contactNo
     })
 
     res.status(201).json(request)
-  } catch (err) {
-    next(err)
-  }
-})
+  })
+)
 
-router.get('/my', auth, async (req, res, next) => {
-  try {
+r.get(
+  '/my',
+  requireAuth,
+  asyncHandler(async (req, res) => {
     const email = req.user.email
     const requests = await Request.find({ requesterEmail: email }).populate('food')
     res.json(requests)
-  } catch (err) {
-    next(err)
-  }
-})
+  })
+)
 
-router.get('/donor', auth, async (req, res, next) => {
-  try {
+r.get(
+  '/donor',
+  requireAuth,
+  asyncHandler(async (req, res) => {
     const email = req.user.email
     const requests = await Request.find({ donorEmail: email }).populate('food')
     res.json(requests)
-  } catch (err) {
-    next(err)
-  }
-})
+  })
+)
 
-router.get('/food/:foodId', auth, async (req, res, next) => {
-  try {
+r.get(
+  '/food/:foodId',
+  requireAuth,
+  asyncHandler(async (req, res) => {
     const email = req.user.email
     const { foodId } = req.params
 
@@ -79,19 +82,19 @@ router.get('/food/:foodId', auth, async (req, res, next) => {
       return res.status(404).json({ message: 'Food not found' })
     }
 
-    if (food.donorEmail !== email) {
+    if (food.donor.email !== email) {
       return res.status(403).json({ message: 'Not allowed' })
     }
 
     const requests = await Request.find({ food: foodId }).sort({ createdAt: -1 })
     res.json(requests)
-  } catch (err) {
-    next(err)
-  }
-})
+  })
+)
 
-router.patch('/:id/status', auth, async (req, res, next) => {
-  try {
+r.patch(
+  '/:id/status',
+  requireAuth,
+  asyncHandler(async (req, res) => {
     const { status } = req.body
     const email = req.user.email
 
@@ -117,9 +120,7 @@ router.patch('/:id/status', auth, async (req, res, next) => {
     }
 
     res.json(request)
-  } catch (err) {
-    next(err)
-  }
-})
+  })
+)
 
-export default router
+export default r
