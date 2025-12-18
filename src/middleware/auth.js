@@ -2,7 +2,7 @@ import admin from 'firebase-admin'
 
 if (!admin.apps.length) {
   admin.initializeApp({
-    credential: admin.credential.applicationDefault()
+    credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_ADMIN))
   })
 }
 
@@ -15,7 +15,7 @@ export async function requireAuth(req, res, next) {
     const decoded = await admin.auth().verifyIdToken(token)
     req.user = decoded
     next()
-  } catch (e) {
+  } catch {
     res.status(401).json({ message: 'Invalid token' })
   }
 }
