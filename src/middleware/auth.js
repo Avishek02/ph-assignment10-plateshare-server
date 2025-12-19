@@ -1,11 +1,19 @@
 import admin from 'firebase-admin'
 import fs from 'fs'
 
-const serviceAccount = JSON.parse(
-  fs.readFileSync('./firebase-admin.json', 'utf8')
-)
+function loadServiceAccount() {
+  const raw = process.env.FIREBASE_ADMIN
+  if (raw && raw.trim()) return JSON.parse(raw)
+
+  if (fs.existsSync('./firebase-admin.json')) {
+    return JSON.parse(fs.readFileSync('./firebase-admin.json', 'utf8'))
+  }
+
+  throw new Error('Missing Firebase admin credentials')
+}
 
 if (!admin.apps.length) {
+  const serviceAccount = loadServiceAccount()
   admin.initializeApp({
     credential: admin.credential.cert(serviceAccount)
   })
