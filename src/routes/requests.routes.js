@@ -1,52 +1,21 @@
 import { Router } from 'express'
-import Request from '../models/request.model.js'
 import Food from '../models/Food.js'
-import { requireAuth } from '../middleware/auth.js'
 import { asyncHandler } from '../utils/errors.js'
+import { requireAuth } from '../middleware/auth.js'
 
 const r = Router()
 
-r.post(
+r.get(
   '/',
-  requireAuth,
   asyncHandler(async (req, res) => {
-    const { foodId, location, reason, contactNo } = req.body
-    const user = req.user
+    const { status, email } = req.query
+    const filter = {}
 
-    if (!foodId || !location || !reason || !contactNo) {
-      return res.status(400).json({ message: 'Missing required fields' })
-    }
+    if (status) filter.status = status
+    if (email) filter['donor.email'] = email
 
-    const food = await Food.findById(foodId)
-    if (!food) {
-      return res.status(404).json({ message: 'Food not found' })
-    }
-
-    if (food.donor.email === user.email) {
-      return res.status(400).json({ message: 'Cannot request own food' })
-    }
-
-    const existing = await Request.findOne({
-      food: foodId,
-      requesterEmail: user.email
-    })
-
-    if (existing) {
-      return res.status(400).json({ message: 'You already requested this food' })
-    }
-
-    const request = await Request.create({
-      food: foodId,
-      donorEmail: food.donor.email,
-      requesterEmail: user.email,
-      requesterName: user.name || user.email,
-      requesterPhoto: user.picture || '',
-      location,
-      reason,
-      contactNo
-    })
-
-    res.status(201).json(request)
+    const foods = await Food.find(filter).sort({ createdAt: -1 })
+    res.json(foods)
   })
 )
 
@@ -54,72 +23,85 @@ r.get(
   '/my',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const email = req.user.email
-    const requests = await Request.find({ requesterEmail: email }).populate('food')
-    res.json(requests)
+    const foods = await Food.find({ 'donor.email': req.user.email }).sort({ createdAt: -1 })
+    res.json(foods)
   })
 )
 
 r.get(
-  '/donor',
-  requireAuth,
+  '/featured',
   asyncHandler(async (req, res) => {
-    const email = req.user.email
-    const requests = await Request.find({ donorEmail: email }).populate('food')
-    res.json(requests)
+    const foods = await Food.find({ status: 'Available' })
+    const top = foods
+      .map(f => ({ f, score: parseInt((f.quantity.match(/\d+/) || ['0'])[0], 10) }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 6)
+      .map(x => x.f)
+
+    res.json(top)
   })
 )
 
 r.get(
-  '/food/:foodId',
+  '/:id',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const email = req.user.email
-    const { foodId } = req.params
+    const food = await Food.findById(req.params.id)
+    if (!food) return res.status(404).json({ message: 'Not found' })
+    res.json(food)
+  })
+)
 
-    const food = await Food.findById(foodId)
-    if (!food) {
-      return res.status(404).json({ message: 'Food not found' })
-    }
-
-    if (food.donor.email !== email) {
-      return res.status(403).json({ message: 'Not allowed' })
-    }
-
-    const requests = await Request.find({ food: foodId }).sort({ createdAt: -1 })
-    res.json(requests)
+r.post(
+  '/',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const { name, imageUrl, quantity, pickupLocation, expireDate, notes } = req.body
+    const food = await Food.create({
+      name,
+      imageUrl,
+      quantity,
+      pickupLocation,
+      expireDate,
+      notes,
+      donor: {
+        name: req.user.name || req.user.email,
+        email: req.user.email,
+        photoURL: req.user.picture,
+        uid: req.user.uid
+      },
+      status: 'Available'
+    })
+    res.status(201).json(food)
   })
 )
 
 r.patch(
-  '/:id/status',
+  '/:id',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const { status } = req.body
-    const email = req.user.email
+    const food = await Food.findById(req.params.id)
+    if (!food) return res.status(404).json({ message: 'Not found' })
+    if (food.donor.email !== req.user.email) return res.status(403).json({ message: 'Forbidden' })
 
-    if (!['Pending', 'Accepted', 'Rejected'].includes(status)) {
-      return res.status(400).json({ message: 'Invalid status' })
-    }
+    const allowed = ['name', 'imageUrl', 'quantity', 'pickupLocation', 'expireDate', 'notes', 'status']
+    for (const k of allowed) if (k in req.body) food[k] = req.body[k]
 
-    const request = await Request.findById(req.params.id).populate('food')
-    if (!request) {
-      return res.status(404).json({ message: 'Request not found' })
-    }
+    await food.save()
+    res.json(food)
+  })
+)
 
-    if (request.donorEmail !== email) {
-      return res.status(403).json({ message: 'Not allowed' })
-    }
+r.delete(
+  '/:id',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const food = await Food.findById(req.params.id)
+    if (!food) return res.status(404).json({ message: 'Not found' })
+    if (food.donor.email !== req.user.email) return res.status(403).json({ message: 'Forbidden' })
 
-    request.status = status
-    await request.save()
-
-    if (status === 'Accepted' && request.food) {
-      request.food.status = 'Donated'
-      await request.food.save()
-    }
-
-    res.json(request)
+    await food.deleteOne()
+    res.json({ ok: true })
   })
 )
 
