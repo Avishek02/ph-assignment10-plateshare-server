@@ -10,20 +10,9 @@ r.get(
   asyncHandler(async (req, res) => {
     const { status, email } = req.query
     const filter = {}
-
     if (status) filter.status = status
     if (email) filter['donor.email'] = email
-
     const foods = await Food.find(filter).sort({ createdAt: -1 })
-    res.json(foods)
-  })
-)
-
-r.get(
-  '/my',
-  requireAuth,
-  asyncHandler(async (req, res) => {
-    const foods = await Food.find({ 'donor.email': req.user.email }).sort({ createdAt: -1 })
     res.json(foods)
   })
 )
@@ -37,8 +26,16 @@ r.get(
       .sort((a, b) => b.score - a.score)
       .slice(0, 6)
       .map(x => x.f)
-
     res.json(top)
+  })
+)
+
+r.get(
+  '/my',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const foods = await Food.find({ 'donor.email': req.user.email }).sort({ createdAt: -1 })
+    res.json(foods)
   })
 )
 
@@ -83,10 +80,8 @@ r.patch(
     const food = await Food.findById(req.params.id)
     if (!food) return res.status(404).json({ message: 'Not found' })
     if (food.donor.email !== req.user.email) return res.status(403).json({ message: 'Forbidden' })
-
     const allowed = ['name', 'imageUrl', 'quantity', 'pickupLocation', 'expireDate', 'notes', 'status']
     for (const k of allowed) if (k in req.body) food[k] = req.body[k]
-
     await food.save()
     res.json(food)
   })
@@ -99,7 +94,6 @@ r.delete(
     const food = await Food.findById(req.params.id)
     if (!food) return res.status(404).json({ message: 'Not found' })
     if (food.donor.email !== req.user.email) return res.status(403).json({ message: 'Forbidden' })
-
     await food.deleteOne()
     res.json({ ok: true })
   })
