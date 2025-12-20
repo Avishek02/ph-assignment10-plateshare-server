@@ -43,7 +43,6 @@ r.get(
 
 r.get(
   '/:id',
-  requireAuth,
   asyncHandler(async (req, res) => {
     const food = await Food.findById(req.params.id)
     if (!food) return res.status(404).json({ message: 'Not found' })
