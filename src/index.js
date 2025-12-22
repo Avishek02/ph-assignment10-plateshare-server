@@ -8,7 +8,10 @@ import requestsRouter from './routes/requests.routes.js'
 const app = express()
 
 app.use(cors({
-  origin: true,
+  origin: [
+    'http://localhost:5173',
+    'https://plateshare-client.vercel.app'
+  ],
   credentials: true,
   allowedHeaders: ['Content-Type', 'Authorization']
 }))
